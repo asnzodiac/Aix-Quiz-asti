@@ -1,0 +1,157 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Excel Quiz</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    body { font-family: Arial; padding: 20px; background: #f9f9f9; }
+    .question { margin-bottom: 20px; padding: 15px; background: #fff; border-radius: 10px; box-shadow: 0 0 5px #ccc; }
+    .option { display: block; margin: 5px 0; }
+    .correct-answer { color: green; font-weight: bold; }
+    .wrong-answer { color: red; font-weight: bold; }
+    .submit-btn { padding: 10px 20px; margin-top: 20px; background: #007BFF; color: #fff; border: none; border-radius: 5px; cursor: pointer; }
+    .submit-btn:hover { background: #0056b3; }
+    .score { font-size: 1.2em; margin-top: 20px; }
+    .hidden { display: none; }
+  </style>
+</head>
+<body>
+  <h2>Excel-Based Quiz</h2>
+  <input type="file" id="file-input" accept=".xlsx" />
+  <form id="quiz-form"></form>
+  <div id="result"></div>
+
+  <script>
+    let questions = [];
+
+    document.getElementById('file-input').addEventListener('change', handleFile, false);
+
+    function handleFile(e) {
+      const reader = new FileReader();
+      reader.onload = function (e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        generateQuiz(json);
+      };
+      reader.readAsArrayBuffer(e.target.files[0]);
+    }
+
+    function generateQuiz(data) {
+      const form = document.getElementById('quiz-form');
+      form.innerHTML = '';
+      questions = [];
+
+      data.slice(2).forEach((row, i) => {
+        const [qNum, question, opt1, opt2, opt3, opt4, correctIndex] = row;
+        if (!question || !opt1 || !opt2 || !opt3 || !opt4 || !correctIndex) return;
+
+        questions.push({
+          question,
+          options: [opt1, opt2, opt3, opt4],
+          correctIndex: parseInt(correctIndex)
+        });
+
+        const qDiv = document.createElement('div');
+        qDiv.className = 'question';
+        qDiv.innerHTML = `<p><strong>Q${i + 1}: ${question}</strong></p>`;
+
+        [opt1, opt2, opt3, opt4].forEach((opt, j) => {
+          const id = `q${i}_opt${j + 1}`;
+          qDiv.innerHTML += `
+            <label class="option">
+              <input type="radio" name="q${i}" value="${j + 1}" id="${id}"> ${opt}
+            </label>`;
+        });
+
+        form.appendChild(qDiv);
+      });
+
+      const submitBtn = document.createElement('button');
+      submitBtn.textContent = 'Submit Quiz';
+      submitBtn.className = 'submit-btn';
+      submitBtn.type = 'button';
+      submitBtn.onclick = checkAnswers;
+      form.appendChild(submitBtn);
+    }
+
+    function checkAnswers() {
+      const form = document.getElementById('quiz-form');
+      const fileInput = document.getElementById('file-input');
+      const result = document.getElementById('result');
+      let score = 0;
+
+      // Hide the quiz form and file input
+      form.classList.add('hidden');
+      fileInput.classList.add('hidden');
+
+      result.innerHTML = '';
+
+      questions.forEach((q, i) => {
+        const selectedInput = document.querySelector(`input[name="q${i}"]:checked`);
+        const selectedValue = selectedInput ? parseInt(selectedInput.value) : null;
+        const selectedText = selectedValue ? q.options[selectedValue - 1] : 'No Answer';
+        const correctText = q.options[q.correctIndex - 1];
+
+        const resultBlock = document.createElement('div');
+        resultBlock.className = 'question';
+        resultBlock.innerHTML = `<p><strong>Q${i + 1}: ${q.question}</strong></p>`;
+
+        if (selectedValue === q.correctIndex) {
+          score++;
+          resultBlock.innerHTML += `<p class="correct-answer">Correct Answer: ${correctText}</p>`;
+        } else {
+          resultBlock.innerHTML += `<p class="wrong-answer">Your Answer: ${selectedText}</p>`;
+          resultBlock.innerHTML += `<p class="correct-answer">Correct Answer: ${correctText}</p>`;
+        }
+
+        result.appendChild(resultBlock);
+      });
+
+      result.innerHTML = `<p class="score">Your Score: ${score} / ${questions.length}</p>` + result.innerHTML;
+    }
+  </script>
+</body>
+</html>
