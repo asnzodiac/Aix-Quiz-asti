@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Quiz</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <div id="quiz"></div>
+  <button onclick="submitQuiz()">Submit</button>
+
+  <script src="firebase-config.js"></script>
+  <script>
+    let currentQuiz;
+    let userEmail;
+    auth.onAuthStateChanged(user => {
+      if (!user) return location.href = "index.html";
+      userEmail = user.email;
+
+      db.collection('quizzes').orderBy('createdAt', 'desc').limit(1).get().then(snap => {
+        currentQuiz = snap.docs[0];
+        const data = currentQuiz.data();
+        const quizDiv = document.getElementById('quiz');
+
+        data.questions.forEach((q, i) => {
+          let html = `<p><strong>Q${i+1}: ${q.question}</strong></p>`;
+          q.options.forEach((opt, j) => {
+            html += `<label><input type="radio" name="q${i}" value="${j+1}"> ${opt}</label><br>`;
+          });
+          quizDiv.innerHTML += html + `<hr>`;
+        });
+      });
+    });
+
+    function submitQuiz() {
+      const data = currentQuiz.data();
+      let score = 0;
+      let answers = [];
+
+      data.questions.forEach((q, i) => {
+        const selected = document.querySelector(`input[name="q${i}"]:checked`);
+        const val = selected ? parseInt(selected.value) : null;
+        answers.push(val);
+        if (val === q.correctIndex) score++;
+      });
+
+      db.collection('attempts').add({
+        quizId: currentQuiz.id,
+        userEmail,
+        score,
+        total: data.questions.length,
+        answers,
+        timestamp: new Date()
+      }).then(() => {
+        location.href = `result.html?score=${score}&total=${data.questions.length}`;
+      });
+    }
+  </script>
+</body>
+</html>
