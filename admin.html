@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Admin Panel</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+</head>
+<body>
+  <h2>Upload Quiz</h2>
+  <input type="file" id="uploadExcel">
+  <h3>Submissions</h3>
+  <div id="results"></div>
+
+  <script src="firebase-config.js"></script>
+  <script>
+    document.getElementById('uploadExcel').addEventListener('change', async e => {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = async function (e) {
+        const data = new Uint8Array(e.target.result);
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        const questions = json.slice(2).map(row => ({
+          question: row[1],
+          options: [row[2], row[3], row[4], row[5]],
+          correctIndex: row[6]
+        }));
+
+        const quizRef = await db.collection('quizzes').add({
+          title: workbook.SheetNames[0],
+          questions,
+          createdAt: new Date()
+        });
+
+        alert("Quiz Uploaded: " + quizRef.id);
+      };
+      reader.readAsArrayBuffer(file);
+    });
+
+    // Load attempts
+    db.collection('attempts').orderBy('timestamp', 'desc').onSnapshot(snapshot => {
+      const resultsDiv = document.getElementById('results');
+      resultsDiv.innerHTML = '';
+      snapshot.forEach(doc => {
+        const d = doc.data();
+        resultsDiv.innerHTML += `<div><strong>${d.userEmail}</strong> scored ${d.score} / ${d.total} on ${new Date(d.timestamp.toDate()).toLocaleString()}</div>`;
+      });
+    });
+  </script>
+</body>
+</html>
